@@ -37,17 +37,6 @@ fn to_cards(cards: &str) -> Array1<u32> {
     result
 }
 
-fn parse_cards(cards: &str) -> Array1<u32> {
-    let mut result = Array1::zeros(N_RESOURCES);
-    for resource in cards
-        .split_whitespace()
-        .map(|s| Resource::try_from(s).unwrap())
-    {
-        result[resource as usize] += 1;
-    }
-    result
-}
-
 struct Tracker {
     players: HashMap<String, usize>,
     states: HashMap<Array2<u32>, u32>,
@@ -168,6 +157,16 @@ impl Tracker {
         println!("{:?}", self.states);
     }
 
+    fn know_has(&mut self, name: &str, cards: &Array1<u32>) {
+        let i = self.get_player_index(name);
+        self.states = self.states
+            .iter()
+            .filter(|(k, _)| k.slice(s![i, ..]).iter().zip(cards.iter()).map(|(x, y)| x > y).all(|x| x))
+            .collect();
+
+        // self.states.retain(|k, _| k.slice(s![i, ..]).iter().zip(cards.iter()).map(|(x, y)| x > y).all(|x| x));
+    }
+
     fn add_cards(&mut self, name: &str, cards: &Array1<u32>) {
         let state = self.cards_to_ndarray(name, cards);
         self.states = self
@@ -178,22 +177,13 @@ impl Tracker {
     }
 
     fn remove_cards(&mut self, name: &str, cards: &Array1<u32>) {
+        self.know_has(name, cards);
         let state = self.cards_to_ndarray(name, cards);
-
-        let z: Array1<u32> = arr1(&[1, 0, 1]) - arr1(&[0, 1, 0]);
-
-        // let z: HashMap<Array2<u32>, u32> = HashMap::new()
-        //     .into_iter()
-        //     .map(|(k, v): (Array2<u32>, u32)| (k.checked_sub(state), v))
-        //     .flatten()
-        //     .collect();
-
-        // self.states = self
-        //     .states
-        //     .iter()
-        //     .map(|(k, v)| (k.checked_sub(state.to_owned()), v.to_owned()))
-        //     .filter(|(k, _)| k.iter().any(|&x| x != 0))
-        //     .collect();
+        self.states = self
+            .states
+            .iter()
+            .map(|(k, v)| (k - state.to_owned(), v.to_owned()))
+            .collect();
     }
 
     fn add_event(&mut self, event: Vec<&str>) {
@@ -206,6 +196,7 @@ impl Tracker {
     }
     fn spend_event(&mut self, event: Vec<&str>) {
         println!("Spend event: {}, {}", event[0], event[1]);
+
     }
     fn rob_event(&mut self, event: Vec<&str>) {
         println!("Rob event: {}, {}", event[0], event[1]);
@@ -291,17 +282,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     std::fs::write("test.html", html)?;
     // }
 
-    let a: Array1<u32> = arr1(&[1, 0, 1]);
-    let b: Array1<u32> = arr1(&[0, 0, 0]);
+    // let a: Array1<u32> = arr1(&[1, 0, 1]);
+    // let b: Array1<u32> = arr1(&[0, 0, 0]);
 
-    let z = a.iter().zip(b.iter()).map(|(x, y)| x < y).any(|x| x);
-    println!("{}", z);
+    // let z = a.iter().zip(b.iter()).map(|(x, y)| x < y).any(|x| x);
+    // println!("{}", z);
 
 
 
-    // let x = std::fs::read_to_string("test.html")?;
-
+    let x = std::fs::read_to_string("test.html")?;
     // let z = Tracker::new().parse_html(&x);
+
+    let mut tracker = Tracker::new();
+    tracker.add_cards("bob", &to_cards(&"brick lumber"));
+    tracker.remove_cards("bob", &to_cards(&"lumber"));
+    println!("{:?}", tracker.states);
 
     // println!("{:?}", expected);
 
