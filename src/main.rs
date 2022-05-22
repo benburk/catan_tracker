@@ -411,19 +411,17 @@ impl Tracker {
 
     /// Computes the rob chances for each player
     fn rob_chances(&self) -> String {
-        let mut table = String::new();
-
-        table.push_str(&format!(
-            format_str!(),
-            "Player", "Lumber", "Brick", "Wool", "Grain", "Ore", "Total"
-        ));
+        let mut table = format!(
+            "{:<10} | {:<6} | {:<6} | {:<6} | {:<6} | {:<6}\n",
+            "Player", "Lumber", "Brick", "Wool", "Grain", "Ore"
+        );
 
         for (player, expected) in self.in_order().zip(self.expected().iter()) {
             table.push_str(&format!("{:<10}", player));
             let total = expected.values().sum::<f64>();
             for value in expected.into_values() {
                 table.push_str(&format!(
-                    " | {:>2.2}",
+                    " | {:<6.2}",
                     if total != 0.0 { value / total } else { 0.0 },
                 ));
             }
