@@ -116,8 +116,8 @@ fn build_patterns() -> [(Regex, fn(&mut Tracker, &[&str]) -> ()); 9] {
             Tracker::handle_bank_trade,
         ),
         (
-            Regex::new(&format!(r"{NAME} stole \d+: {CARDS}")).unwrap(),
-            Tracker::monopoly_event,
+            Regex::new(&format!(r"{NAME} stole (\d+): {CARDS}")).unwrap(),
+            Tracker::handle_monopoly,
         ),
     ]
 }
@@ -125,7 +125,9 @@ fn build_patterns() -> [(Regex, fn(&mut Tracker, &[&str]) -> ()); 9] {
 struct Tracker {
     player_idx: HashMap<String, usize>,
     players: [usize; N_PLAYERS],
-    states: HashMap<State, u32>,
+    // We're rewriting or iterating the entire structure on every event
+    // so not much point in having a hashmap.
+    states: Vec<(State, u64)>,
     events: [(Regex, fn(&mut Self, &[&str]) -> ()); 9],
     last_line: usize,
 }
@@ -135,7 +137,7 @@ impl Tracker {
         Self {
             player_idx: HashMap::new(),
             players: [0, 1, 2, 3],
-            states: HashMap::from([(State::default(), 1)]),
+            states: vec![(State::default(), 1)],
             events: build_patterns(),
             last_line: 0,
         }
@@ -188,7 +190,7 @@ impl Tracker {
     /// Removes states where player does not have that many cards.
     fn know_has(&mut self, name: &str, cards: &Hand) {
         let i = self.get_player_index(name);
-        self.states.retain(|state, _| {
+        self.states.retain(|(state, _)| {
             state[i]
                 .iter()
                 .zip(cards.iter())
@@ -263,10 +265,10 @@ impl Tracker {
                     let mut s_new = state.clone();
                     s_new[robber_id][card] += 1;
                     s_new[robbee_id][card] -= 1;
-                    results.insert(s_new, *num as u32 * count);
+                    *results.entry(s_new).or_insert(0) += *num as u64 * count;
                 }
             }
-            self.states = results;
+            self.states = results.into_iter().collect();
         } else {
             // rob involving ourselves and we know the card that was taken
             let cards = to_cards(event[1]);
@@ -300,31 +302,36 @@ impl Tracker {
         self.remove_cards(event[0], &to_cards(event[1]));
         self.add_cards(event[0], &to_cards(event[2]));
     }
-    fn monopoly_event(&mut self, event: &[&str]) {
-        println!("{} monopolied {}", event[0], event[1]);
+    fn handle_monopoly(&mut self, event: &[&str]) {
+        println!("{} monopolied {} {}", event[0], event[1], event[2]);
         let i = self.get_player_index(event[0]);
-
-        let card = match Resource::try_from(event[1]) {
+        let total = event[1].parse::<u8>().unwrap();
+        let card = match Resource::try_from(event[2]) {
             Ok(card) => card,
-            Err(_) => panic!("Unknown resource: {}", event[1]),
+            Err(_) => panic!("Unknown resource: {}", event[2]),
         };
 
-        // FIXME: are we summing on the wrong axis?
-        let total = self
-            .states
-            .keys()
-            .next()
-            .unwrap() // there should be at least one state
-            .iter()
-            .map(|c| c[card])
-            .sum();
+        // after a reset we don't know how many cards of each type are in play
+        // after a monopoly, we don't know how many cards each player has... right?
+
+        // let's remove all the states where the count doesn't match the total
+        // doesn't tell us
+        self.states.retain(|(state, _)| {
+            state
+                .iter()
+                .enumerate()
+                .filter(|(idx, _)| *idx != i) // don't count the monopoler
+                .map(|(_, hand)| hand[card])
+                .sum::<u8>()
+                == total
+        });
 
         self.states = self
             .states
             .iter()
-            .map(|(state, v)| {
-                let mut state = state.clone();
-                for mut hand in state {
+            .map(|(k, v)| {
+                let mut state = k.clone();
+                for hand in state.iter_mut() {
                     hand[card] = 0;
                 }
                 state[i][card] = total;
@@ -335,7 +342,7 @@ impl Tracker {
 
     /// Computes the expected value for the number of cards each player has
     fn expected(&self) -> [EnumMap<Resource, f64>; N_PLAYERS] {
-        let n_states = self.states.values().sum::<u32>() as f64;
+        let n_states = self.states.iter().map(|(_, count)| *count).sum::<u64>() as f64;
         let mut expected = <[EnumMap<Resource, f64>; N_PLAYERS]>::default();
         for (state, count) in self.states.iter() {
             for (player, cards) in state.iter().enumerate() {
@@ -349,8 +356,8 @@ impl Tracker {
 
     /// Computes the minimum number of cards each player could have
     fn sure(&self) -> State {
-        let mut sure = self.states.keys().next().unwrap().clone();
-        for state in self.states.keys() {
+        let mut sure = self.states[0].0; // there should be at least one
+        for (state, _) in &self.states {
             for (player, cards) in state.iter().enumerate() {
                 for (card, num) in cards.iter() {
                     sure[player][card] = std::cmp::min(sure[player][card], *num);
@@ -398,43 +405,43 @@ impl Tracker {
                 format_str!(),
                 player,
                 format!(
-                    "{:>2} ({:1.2})",
+                    "{:>2} ({:4.2})",
                     sure[id][Resource::Lumber],
                     expected[id][Resource::Lumber] - sure[id][Resource::Lumber] as f64
                 ),
                 format!(
-                    "{:>2} ({:1.2})",
+                    "{:>2} ({:4.2})",
                     sure[id][Resource::Brick],
                     expected[id][Resource::Brick] - sure[id][Resource::Brick] as f64
                 ),
                 format!(
-                    "{:>2} ({:1.2})",
+                    "{:>2} ({:4.2})",
                     sure[id][Resource::Wool],
                     expected[id][Resource::Wool] - sure[id][Resource::Wool] as f64
                 ),
                 format!(
-                    "{:>2} ({:1.2})",
+                    "{:>2} ({:4.2})",
                     sure[id][Resource::Grain],
                     expected[id][Resource::Grain] - sure[id][Resource::Grain] as f64
                 ),
                 format!(
-                    "{:>2} ({:1.2})",
+                    "{:>2} ({:4.2})",
                     sure[id][Resource::Ore],
                     expected[id][Resource::Ore] - sure[id][Resource::Ore] as f64
                 ),
-                format!("{:>2.0}", expected[id].values().sum::<f64>())
+                format!("{:>5.2}", expected[id].values().sum::<f64>())
             ));
         }
 
         result.push_str(&format!(
             format_str!(),
             "Total",
-            format!("{:>2.0}", totals[Resource::Lumber]),
-            format!("{:>2.0}", totals[Resource::Brick]),
-            format!("{:>2.0}", totals[Resource::Wool]),
-            format!("{:>2.0}", totals[Resource::Grain]),
-            format!("{:>2.0}", totals[Resource::Ore]),
-            format!("{:>2.0}", totals.values().sum::<f64>())
+            format!("{:>5.2}", totals[Resource::Lumber]),
+            format!("{:>5.2}", totals[Resource::Brick]),
+            format!("{:>5.2}", totals[Resource::Wool]),
+            format!("{:>5.2}", totals[Resource::Grain]),
+            format!("{:>5.2}", totals[Resource::Ore]),
+            format!("{:>5.2}", totals.values().sum::<f64>())
         ));
 
         result
@@ -447,7 +454,7 @@ impl Tracker {
             pools[i] = possible_hands(*count);
         }
 
-        let mut results = HashMap::new();
+        let mut results = Vec::new();
 
         // cartesian product of all possible states
         let mut indices = [0; N_PLAYERS - 1];
@@ -463,7 +470,7 @@ impl Tracker {
                 state[i] = value;
             }
             state[N_PLAYERS - 1] = my_cards;
-            results.insert(state, 1);
+            results.push((state, 1));
 
             // "carry" logic
             for i in (0..pools.len()).rev() {
@@ -618,5 +625,22 @@ mod tests {
         tracker.add_cards("b", &Hand::from_array([0, 0, 0, 0, 0]));
         tracker.add_cards("c", &Hand::from_array([0, 0, 0, 0, 0]));
         tracker.add_cards(USERNAME, &Hand::from_array([0, 0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn test_monopoly_after_reset() {
+        let mut tracker = Tracker::new();
+        tracker.add_cards("a", &Hand::default());
+        tracker.add_cards("b", &Hand::default());
+        tracker.add_cards("c", &Hand::default());
+        tracker.add_cards(USERNAME, &Hand::default());
+
+        let counts = [1, 2, 1];
+        tracker.reset(Hand::from_array([0, 1, 0, 0, 0]), &counts);
+
+        println!("{}", tracker.build_table());
+
+        tracker.handle_monopoly(&["a", "2", "brick"]);
+        println!("{}", tracker.build_table());
     }
 }
