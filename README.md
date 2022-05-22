@@ -9,7 +9,9 @@ TODO:
 - [x] implement rob chances table
 - [x] deprecate name remapping and in_order
 - [ ] take in player names as argument
+    - [ ] update reset logic
 - [ ] add colors
+    - [x] rob chances
 - [ ] remove uncertainty in table for USERNAME
 - [ ] dice tracker
 - [ ] dev card tracker

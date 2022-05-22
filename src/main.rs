@@ -6,31 +6,12 @@ use std::collections::HashMap;
 mod util;
 
 use crate::util::input;
-use util::{possible_hands, Hand, Resource, State, N_PLAYERS};
+use util::{color, possible_hands, Hand, Resource, State, N_PLAYERS};
 
 const NAME: &str = r"(\w+(?:#\d+)?)";
 const CARDS: &str = r"((?:(?:lumber|brick|wool|grain|ore|card) ?)+)";
 const ITEM_PTTN: &str = r"(road|settlement|city|development card)";
 const USERNAME: &str = "Mera#4025";
-
-fn normalize_text(text: &str) -> String {
-    let text = Regex::new(r"\s+")
-        .unwrap()
-        .replace_all(text, " ")
-        .to_string();
-
-    let text = Regex::new(r"\s+$")
-        .unwrap()
-        .replace_all(&text, "")
-        .to_string();
-
-    let text = Regex::new(r"\b(?i)you\b")
-        .unwrap()
-        .replace_all(&text, USERNAME)
-        .to_string();
-
-    text
-}
 
 /// Parses the html into log messages
 fn parse_html(html: &str) -> Vec<String> {
@@ -57,7 +38,6 @@ fn parse_html(html: &str) -> Vec<String> {
 /// Parses cards with any amount of whitespace between them.
 fn to_cards(cards: &str) -> Hand {
     let re = Regex::new(r"(lumber|brick|wool|grain|ore)").unwrap();
-
     let mut result = Hand::default();
     for capture in re.captures_iter(cards) {
         let text = capture.get(0).unwrap().as_str();
@@ -148,7 +128,13 @@ impl Tracker {
         }
 
         for line in &messages[self.last_line..] {
-            let line = normalize_text(line.as_ref());
+            // normalize text
+            let line = Regex::new(r"\s+").unwrap().replace_all(line.as_ref(), " ");
+            let line = Regex::new(r"\s+$").unwrap().replace_all(&line, "");
+            let line = Regex::new(r"\b(Y|y)ou\b")
+                .unwrap()
+                .replace_all(&line, USERNAME);
+
             for (regex, event) in &self.events {
                 if let Some(caps) = regex.captures(line.as_ref()) {
                     let args = caps
@@ -244,12 +230,10 @@ impl Tracker {
     }
     fn handle_rob(&mut self, event: &[&str]) {
         println!("{} stole {} from {}", event[0], event[1], event[2]);
-
         if event[1] == "card" {
             // we don't know what card was stolen
             let robber_id = self.get_player_index(event[0]);
             let robbee_id = self.get_player_index(event[2]);
-
             let mut results = HashMap::new();
             for (state, count) in self.states.iter() {
                 for (card, num) in state[robbee_id].iter().filter(|(_, c)| **c > 0) {
@@ -409,14 +393,33 @@ impl Tracker {
             "Player", "Lumber", "Brick", "Wool", "Grain", "Ore"
         );
 
-        for (player, expected) in self.in_order().zip(self.expected().iter()) {
+        // best percentage to steal from that person
+        let expected = self.expected();
+        let mut best = EnumMap::<Resource, f64>::default();
+        let mut odds = [EnumMap::<Resource, f64>::default(); N_PLAYERS];
+        for (i, hand) in expected.iter().enumerate() {
+            let total = hand.values().sum::<f64>();
+            if total == 0.0 {
+                continue;
+            }
+            for (card, num) in hand {
+                let x = num / total;
+                best[card] = f64::max(best[card], x);
+                odds[i][card] = x;
+            }
+        }
+
+        for (player, odds) in self.in_order().zip(odds.iter()) {
             table.push_str(&format!("{:<10}", player));
-            let total = expected.values().sum::<f64>();
-            for value in expected.into_values() {
-                table.push_str(&format!(
-                    " | {:<6.2}",
-                    if total != 0.0 { value / total } else { 0.0 },
-                ));
+            for (card, &value) in odds {
+                if value != 0.0 && value == best[card] {
+                    table.push_str(&format!(
+                        " | {}",
+                        color(format!("{:<6.2}", value), (0, 255, 0))
+                    ));
+                } else {
+                    table.push_str(&format!(" | {:<6.2}", value));
+                }
             }
             table.push_str("\n");
         }
@@ -585,7 +588,7 @@ mod tests {
         let mut tracker = Tracker::new();
         tracker.add_cards("a", &Hand::from_array([0, 0, 1, 0, 0]));
         tracker.add_cards("b", &Hand::from_array([0, 2, 0, 3, 0]));
-        tracker.add_cards("c", &Hand::default());
+        tracker.add_cards("c", &Hand::from_array([0, 0, 1, 0, 0]));
         println!("{}", tracker.rob_chances());
     }
 

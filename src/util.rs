@@ -1,4 +1,4 @@
-use enum_map::{enum_map, Enum, EnumMap};
+use enum_map::{Enum, EnumMap};
 use std::io;
 use std::io::Write;
 
@@ -75,6 +75,16 @@ pub fn input(msg: &str) -> String {
     buf
 }
 
+pub fn color<T: AsRef<str>>(text: T, rgb: (u8, u8, u8)) -> String {
+    format!(
+        "\x1b[38;2;{};{};{}m{}\x1b[0m",
+        rgb.0,
+        rgb.1,
+        rgb.2,
+        text.as_ref()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{possible_hands, Hand, Resource};
@@ -102,5 +112,16 @@ mod tests {
         let n = 19; // most cards of one type a player could have
         let hands = possible_hands(n);
         assert_eq!(8855, hands.len());
+    }
+
+    #[test]
+    fn test_color() {
+        use super::color;
+        let color_text = color("Hello", (255, 0, 0));
+        println!("{}", color_text);
+        let color_text = color("Hello", (0, 255, 0));
+        println!("{}", color_text);
+        let color_text = color("Hello", (0, 0, 255));
+        println!("{}", color_text);
     }
 }
