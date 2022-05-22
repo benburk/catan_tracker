@@ -167,46 +167,29 @@ impl Tracker {
     /// Removes states where player does not have that many cards.
     fn know_has(&mut self, name: &str, cards: &Hand) {
         let i = self.get_player_index(name);
-        self.states.retain(|(state, _)| {
-            state[i]
-                .iter()
-                .zip(cards.iter())
-                .all(|((_, a), (_, b))| *a >= *b)
-        });
-        assert!(self.states.len() > 0);
+        self.states
+            .retain(|(state, _)| state[i].values().zip(cards.values()).all(|(&a, &b)| a >= b));
+        assert!(self.states.len() > 0, "No states left!");
     }
 
     /// Adds a `Hand` of cards to every state for a player
     fn add_cards(&mut self, name: &str, cards: &Hand) {
         let i = self.get_player_index(name);
-        self.states = self
-            .states
-            .iter()
-            .map(|(k, v)| {
-                let mut k = k.clone();
-                for (card, count) in cards {
-                    k[i][card] += count;
-                }
-                (k, *v)
-            })
-            .collect();
+        for (state, _) in self.states.iter_mut() {
+            for (card, count) in cards {
+                state[i][card] += count;
+            }
+        }
     }
 
     fn remove_cards(&mut self, name: &str, cards: &Hand) {
         self.know_has(name, cards);
         let i = self.get_player_index(name);
-
-        self.states = self
-            .states
-            .iter()
-            .map(|(k, v)| {
-                let mut k = k.clone();
-                for (card, count) in cards {
-                    k[i][card] -= count;
-                }
-                (k, *v)
-            })
-            .collect();
+        for (state, _) in self.states.iter_mut() {
+            for (card, count) in cards {
+                state[i][card] -= count;
+            }
+        }
     }
 
     fn handle_receive(&mut self, event: &[&str]) {
@@ -280,7 +263,7 @@ impl Tracker {
     fn handle_monopoly(&mut self, event: &[&str]) {
         println!("{} monopolied {} {}", event[0], event[1], event[2]);
         let i = self.get_player_index(event[0]);
-        let total = event[1].parse::<u8>().unwrap();
+        let n_stolen = event[1].parse::<u8>().unwrap();
         let card = match Resource::try_from(event[2]) {
             Ok(card) => card,
             Err(_) => panic!("Unknown resource: {}", event[2]),
@@ -298,21 +281,18 @@ impl Tracker {
                 .filter(|(idx, _)| *idx != i) // don't count the monopoler
                 .map(|(_, hand)| hand[card])
                 .sum::<u8>()
-                == total
+                == n_stolen
         });
 
-        self.states = self
-            .states
-            .iter()
-            .map(|(k, v)| {
-                let mut state = k.clone();
-                for hand in state.iter_mut() {
+        for (state, _) in self.states.iter_mut() {
+            for (j, hand) in state.iter_mut().enumerate() {
+                if j != i {
                     hand[card] = 0;
+                } else {
+                    hand[card] += n_stolen;
                 }
-                state[i][card] = total;
-                (state, *v)
-            })
-            .collect();
+            }
+        }
     }
 
     /// Computes the expected value for the number of cards each player has
@@ -465,20 +445,21 @@ impl Tracker {
 
     fn handle_reset(&mut self) {
         println!("Can't see start of game. Resetting...");
-        self.player_idx = HashMap::new();
-
-        println!("Card counts: [Name count]+");
-        let parts = input("> ")
-            .split_whitespace()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>();
-
-        let mut counts = [0; N_PLAYERS - 1];
-        for chunk in parts.chunks(2) {
-            let i = self.get_player_index(&chunk[0]);
-            counts[i] = chunk[1].parse().unwrap();
+        if self.player_idx.len() != N_PLAYERS {
+            println!("Can't reset without player names. Relaunch program");
+            std::process::exit(1);
         }
-        self.get_player_index(USERNAME);
+
+        println!(
+            "Card counts: {}",
+            self.in_order().take(3).collect::<Vec<_>>().join(", ")
+        );
+        let counts: [u8; N_PLAYERS - 1] = input("> ")
+            .split_whitespace()
+            .map(|s| s.parse().unwrap())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
 
         // get my cards
         println!("Your card counts: lumber brick wool grain ore");
@@ -490,7 +471,6 @@ impl Tracker {
                 .try_into()
                 .expect("Expected 5 u8"),
         );
-
         self.reset(my_cards, &counts);
     }
 
@@ -513,9 +493,21 @@ impl Tracker {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut browser = cdp_client::Browser::new("http://localhost:9222/json")?;
     let mut tracker = Tracker::new();
 
+    // register players
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        if args.len() != N_PLAYERS + 1 {
+            println!("Expected {} players", N_PLAYERS);
+            std::process::exit(1);
+        }
+        for name in &args[1..] {
+            tracker.get_player_index(name);
+        }
+    }
+
+    let mut browser = cdp_client::Browser::new("http://localhost:9222/json")?;
     loop {
         let response = browser.send(
             "Runtime.evaluate",
@@ -605,6 +597,20 @@ mod tests {
 
         println!("{}", tracker.build_table());
 
+        tracker.handle_monopoly(&["a", "2", "brick"]);
+        println!("{}", tracker.build_table());
+    }
+
+    #[test]
+    fn test_monopoly() {
+        let mut tracker = Tracker::new();
+        tracker.add_cards("a", &Hand::default());
+        tracker.add_cards("b", &Hand::default());
+        tracker.add_cards("c", &Hand::default());
+        tracker.add_cards(USERNAME, &Hand::default());
+
+        let counts = [1, 1, 2];
+        tracker.reset(Hand::from_array([0, 0, 0, 0, 0]), &counts);
         tracker.handle_monopoly(&["a", "2", "brick"]);
         println!("{}", tracker.build_table());
     }
