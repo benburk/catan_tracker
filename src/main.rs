@@ -6,7 +6,7 @@ use std::collections::HashMap;
 mod util;
 
 use crate::util::input;
-use util::{color, possible_hands, Hand, Resource, State, N_PLAYERS};
+use util::{format_str, possible_hands, Hand, Resource, State, N_PLAYERS};
 
 const NAME: &str = r"(\w+(?:#\d+)?)";
 const CARDS: &str = r"((?:(?:lumber|brick|wool|grain|ore|card) ?)+)";
@@ -99,6 +99,7 @@ struct Tracker {
     player_idx: HashMap<String, usize>,
     // We're rewriting or iterating the entire structure on every event
     // so not much point in having a hashmap.
+    colors: [String; N_PLAYERS],
     states: Vec<(State, u64)>,
     events: [(Regex, fn(&mut Self, &[&str]) -> ()); 9],
     last_line: usize,
@@ -108,6 +109,7 @@ impl Tracker {
     pub fn new() -> Self {
         Self {
             player_idx: HashMap::new(),
+            colors: Default::default(),
             states: vec![(State::default(), 1)],
             events: build_patterns(),
             last_line: 0,
@@ -339,30 +341,34 @@ impl Tracker {
         );
 
         let mut totals = EnumMap::<Resource, f64>::default();
-        for ((player, expected), sure) in self
+        for (((player, expected), sure), color) in self
             .in_order()
             .zip(self.expected().iter())
             .zip(self.sure().iter())
+            .zip(self.colors.iter())
         {
             for (card, num) in expected.into_iter() {
                 totals[card] += num;
             }
-            table.push_str(&format!("{:<10}", player));
+            table.push_str(&format_str(format!("{:<10}", player), &color));
             for (exp, sure) in expected.into_values().zip(sure.into_values()) {
-                table.push_str(&format!(
-                    " | {:>2} ({:4.2})",
-                    sure,
-                    (exp - sure as f64).abs()
+                table.push_str(" | ");
+                table.push_str(&format_str(
+                    format!("{:>2} ({:>4.2})", sure, (exp - sure as f64).abs()),
+                    &color,
                 ));
             }
-            table.push_str(&format!(" |  {:<5.2}", expected.values().sum::<f64>()));
-            table.push_str("\n");
+            table.push_str(" | ");
+            table.push_str(&format_str(
+                format!("{:>5.2}\n", expected.values().sum::<f64>()),
+                &color,
+            ));
         }
         table.push_str(&format!("{:<10}", "Totals"));
         for total in totals.values() {
             table.push_str(&format!(" |  {:<8.2}", total));
         }
-        table.push_str(&format!(" |  {:<5.2}\n", totals.values().sum::<f64>()));
+        table.push_str(&format!(" | {:>5.2}\n", totals.values().sum::<f64>()));
         table
     }
 
@@ -395,7 +401,7 @@ impl Tracker {
                 if value != 0.0 && value == best[card] {
                     table.push_str(&format!(
                         " | {}",
-                        color(format!("{:<6.2}", value), (0, 255, 0))
+                        format_str(format!("{:<6.2}", value), "green")
                     ));
                 } else {
                     table.push_str(&format!(" | {:<6.2}", value));
@@ -486,6 +492,18 @@ impl Tracker {
         match op {
             "states" => {
                 println!("States: {}", self.states.len());
+            }
+            "rob" => {
+                println!("{}", self.rob_chances());
+            }
+            "colors" => {
+                println!("Colors: {}", self.in_order().collect::<Vec<_>>().join(", "));
+                self.colors = input("> ")
+                    .split_whitespace()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
             }
             _ => println!("Unknown command: {}", command),
         }

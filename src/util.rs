@@ -75,14 +75,19 @@ pub fn input(msg: &str) -> String {
     buf
 }
 
-pub fn color<T: AsRef<str>>(text: T, rgb: (u8, u8, u8)) -> String {
-    format!(
-        "\x1b[38;2;{};{};{}m{}\x1b[0m",
-        rgb.0,
-        rgb.1,
-        rgb.2,
-        text.as_ref()
-    )
+/// https://gist.github.com/Prakasaka/219fe5695beeb4d6311583e79933a009
+pub fn format_str<T: AsRef<str>>(text: T, color: &str) -> String {
+    match color {
+        "black" => format!("\x1b[30m{}\x1b[0m", text.as_ref()),
+        "red" => format!("\x1b[31m{}\x1b[0m", text.as_ref()),
+        "green" => format!("\x1b[32m{}\x1b[0m", text.as_ref()),
+        "yellow" => format!("\x1b[33m{}\x1b[0m", text.as_ref()),
+        "blue" => format!("\x1b[34m{}\x1b[0m", text.as_ref()),
+        "purple" => format!("\x1b[35m{}\x1b[0m", text.as_ref()),
+        "cyan" => format!("\x1b[36m{}\x1b[0m", text.as_ref()),
+        "white" => format!("\x1b[37m{}\x1b[0m", text.as_ref()),
+        _ => text.as_ref().to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -116,12 +121,12 @@ mod tests {
 
     #[test]
     fn test_color() {
-        use super::color;
-        let color_text = color("Hello", (255, 0, 0));
-        println!("{}", color_text);
-        let color_text = color("Hello", (0, 255, 0));
-        println!("{}", color_text);
-        let color_text = color("Hello", (0, 0, 255));
-        println!("{}", color_text);
+        use super::format_str;
+        println!("{}", format_str("Hello", "red"));
+        println!("{}", format_str("Hello", "blue"));
+        println!("{}", format_str("Hello", "orange"));
+        println!("{}", format_str("Hello", "green"));
+        println!("{}", format_str("Hello", "yellow"));
+        println!("{}", format_str("Hello", "none"));
     }
 }
