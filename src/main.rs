@@ -124,7 +124,6 @@ fn build_patterns() -> [(Regex, fn(&mut Tracker, &[&str]) -> ()); 9] {
 
 struct Tracker {
     player_idx: HashMap<String, usize>,
-    players: [usize; N_PLAYERS],
     // We're rewriting or iterating the entire structure on every event
     // so not much point in having a hashmap.
     states: Vec<(State, u64)>,
@@ -136,7 +135,6 @@ impl Tracker {
     pub fn new() -> Self {
         Self {
             player_idx: HashMap::new(),
-            players: [0, 1, 2, 3],
             states: vec![(State::default(), 1)],
             events: build_patterns(),
             last_line: 0,
@@ -367,84 +365,71 @@ impl Tracker {
         sure
     }
 
-    /// Iterates players in view order
-    fn in_order(&self) -> impl Iterator<Item = (usize, &str)> {
-        let player_map: HashMap<usize, &str> = self
+    fn in_order(&self) -> impl Iterator<Item = &str> {
+        let mut players = self
             .player_idx
             .iter()
-            .map(|(i, s)| (*s, i.as_ref()))
-            .collect();
-
-        self.players
-            .into_iter()
-            .filter_map(move |id| match player_map.get(&id) {
-                Some(player) => Some((id, *player)),
-                None => None,
-            })
+            .map(|(a, &b)| (a.as_ref(), b))
+            .collect::<Vec<_>>();
+        players.sort_by_key(|(_, i)| *i);
+        players.into_iter().map(|(a, _)| a)
     }
 
     fn build_table(&self) -> String {
-        let mut result = String::new();
+        let mut table = format!(
+            "{:<10} | {:<9} | {:<9} | {:<9} | {:<9} | {:<9} | {:<9}\n",
+            "Player", "Lumber", "Brick", "Wool", "Grain", "Ore", "Total"
+        );
 
-        // Header
-        result.push_str(&format!(
+        let mut totals = EnumMap::<Resource, f64>::default();
+        for ((player, expected), sure) in self
+            .in_order()
+            .zip(self.expected().iter())
+            .zip(self.sure().iter())
+        {
+            for (card, num) in expected.into_iter() {
+                totals[card] += num;
+            }
+            table.push_str(&format!("{:<10}", player));
+            for (exp, sure) in expected.into_values().zip(sure.into_values()) {
+                table.push_str(&format!(
+                    " | {:>2} ({:4.2})",
+                    sure,
+                    (exp - sure as f64).abs()
+                ));
+            }
+            table.push_str(&format!(" |  {:<5.2}", expected.values().sum::<f64>()));
+            table.push_str("\n");
+        }
+        table.push_str(&format!("{:<10}", "Totals"));
+        for total in totals.values() {
+            table.push_str(&format!(" |  {:<8.2}", total));
+        }
+        table.push_str(&format!(" |  {:<5.2}\n", totals.values().sum::<f64>()));
+        table
+    }
+
+    /// Computes the rob chances for each player
+    fn rob_chances(&self) -> String {
+        let mut table = String::new();
+
+        table.push_str(&format!(
             format_str!(),
             "Player", "Lumber", "Brick", "Wool", "Grain", "Ore", "Total"
         ));
 
-        let expected = self.expected();
-        let sure = self.sure();
-        let mut totals = EnumMap::<Resource, f64>::default();
-
-        for (id, player) in self.in_order() {
-            for (card, num) in expected[id].into_iter() {
-                totals[card] += num;
+        for (player, expected) in self.in_order().zip(self.expected().iter()) {
+            table.push_str(&format!("{:<10}", player));
+            let total = expected.values().sum::<f64>();
+            for value in expected.into_values() {
+                table.push_str(&format!(
+                    " | {:>2.2}",
+                    if total != 0.0 { value / total } else { 0.0 },
+                ));
             }
-
-            result.push_str(&format!(
-                format_str!(),
-                player,
-                format!(
-                    "{:>2} ({:4.2})",
-                    sure[id][Resource::Lumber],
-                    expected[id][Resource::Lumber] - sure[id][Resource::Lumber] as f64
-                ),
-                format!(
-                    "{:>2} ({:4.2})",
-                    sure[id][Resource::Brick],
-                    expected[id][Resource::Brick] - sure[id][Resource::Brick] as f64
-                ),
-                format!(
-                    "{:>2} ({:4.2})",
-                    sure[id][Resource::Wool],
-                    expected[id][Resource::Wool] - sure[id][Resource::Wool] as f64
-                ),
-                format!(
-                    "{:>2} ({:4.2})",
-                    sure[id][Resource::Grain],
-                    expected[id][Resource::Grain] - sure[id][Resource::Grain] as f64
-                ),
-                format!(
-                    "{:>2} ({:4.2})",
-                    sure[id][Resource::Ore],
-                    expected[id][Resource::Ore] - sure[id][Resource::Ore] as f64
-                ),
-                format!("{:>5.2}", expected[id].values().sum::<f64>())
-            ));
+            table.push_str("\n");
         }
-
-        result.push_str(&format!(
-            format_str!(),
-            "Total",
-            format!("{:>5.2}", totals[Resource::Lumber]),
-            format!("{:>5.2}", totals[Resource::Brick]),
-            format!("{:>5.2}", totals[Resource::Wool]),
-            format!("{:>5.2}", totals[Resource::Grain]),
-            format!("{:>5.2}", totals[Resource::Ore]),
-            format!("{:>5.2}", totals.values().sum::<f64>())
-        ));
-
-        result
+        table
     }
 
     /// counts must be in same order as player_idx
@@ -454,23 +439,21 @@ impl Tracker {
             pools[i] = possible_hands(*count);
         }
 
-        let mut results = Vec::new();
-
         // cartesian product of all possible states
+        self.states.clear();
         let mut indices = [0; N_PLAYERS - 1];
         'outer: loop {
-            // build current state
             let mut state = State::default();
             for (i, value) in indices
                 .iter()
                 .zip(pools.iter())
-                .map(|(i, p)| p[*i])
+                .map(|(i, pool)| pool[*i])
                 .enumerate()
             {
                 state[i] = value;
             }
             state[N_PLAYERS - 1] = my_cards;
-            results.push((state, 1));
+            self.states.push((state, 1));
 
             // "carry" logic
             for i in (0..pools.len()).rev() {
@@ -484,7 +467,6 @@ impl Tracker {
                 }
             }
         }
-        self.states = results;
     }
 
     fn handle_reset(&mut self) {
@@ -528,13 +510,6 @@ impl Tracker {
         };
 
         match op {
-            "rename" => {
-                self.players = parts
-                    .map(|p| p.parse::<usize>().expect("Expected integer"))
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .expect("Expected 4 numbers");
-            }
             "states" => {
                 println!("States: {}", self.states.len());
             }
@@ -554,18 +529,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "expression": r#"document.getElementById("game-log-text").outerHTML"#
             }),
         )?;
-
         if let Value::String(html) = &response["result"]["value"] {
             let lines = parse_html(html);
             tracker.parse_log(&lines);
         } else {
             println!("Failed to find game log.");
         }
-
         println!("{}", tracker.build_table());
-
         let input = util::input("> ");
-
         tracker.parse_command(&input);
     }
 }
@@ -606,10 +577,10 @@ mod tests {
     #[test]
     fn test_reset() {
         let mut tracker = Tracker::new();
-        tracker.add_cards("a", &Hand::from_array([0, 0, 0, 0, 0]));
-        tracker.add_cards("b", &Hand::from_array([0, 0, 0, 0, 0]));
-        tracker.add_cards("c", &Hand::from_array([0, 0, 0, 0, 0]));
-        tracker.add_cards(USERNAME, &Hand::from_array([0, 0, 0, 0, 0]));
+        tracker.add_cards("a", &Hand::from_array([0, 5, 3, 1, 0]));
+        tracker.add_cards("b", &Hand::default());
+        tracker.add_cards("c", &Hand::default());
+        tracker.add_cards(USERNAME, &Hand::default());
 
         let counts = [3, 5, 2];
         tracker.reset(Hand::from_array([1, 3, 1, 0, 0]), &counts);
@@ -619,12 +590,12 @@ mod tests {
     }
 
     #[test]
-    fn test_monopoly() {
+    fn test_rob_chances() {
         let mut tracker = Tracker::new();
-        tracker.add_cards("a", &Hand::from_array([0, 0, 0, 0, 0]));
-        tracker.add_cards("b", &Hand::from_array([0, 0, 0, 0, 0]));
-        tracker.add_cards("c", &Hand::from_array([0, 0, 0, 0, 0]));
-        tracker.add_cards(USERNAME, &Hand::from_array([0, 0, 0, 0, 0]));
+        tracker.add_cards("a", &Hand::from_array([0, 0, 1, 0, 0]));
+        tracker.add_cards("b", &Hand::from_array([0, 2, 0, 3, 0]));
+        tracker.add_cards("c", &Hand::default());
+        println!("{}", tracker.rob_chances());
     }
 
     #[test]

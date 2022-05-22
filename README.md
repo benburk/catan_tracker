@@ -6,8 +6,10 @@ TODO:
 - [x] use vec instead of hashmap?
 - [x] fix incorrect rob logic in computing probabilities
 - [x] fix monopoly
-- [ ] implement rob chances table
+- [x] implement rob chances table
+- [x] deprecate name remapping and in_order
+- [ ] take in player names as argument
 - [ ] add colors
 - [ ] remove uncertainty in table for USERNAME
-- dice tracker
-- 
+- [ ] dice tracker
+- [ ] dev card tracker
