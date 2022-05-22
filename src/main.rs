@@ -334,13 +334,13 @@ impl Tracker {
     }
 
     /// Computes the expected value for the number of cards each player has
-    fn expected(&self) -> [EnumMap<Resource, f32>; N_PLAYERS] {
-        let n_states = self.states.values().sum::<u32>() as f32;
-        let mut expected = <[EnumMap<Resource, f32>; N_PLAYERS]>::default();
+    fn expected(&self) -> [EnumMap<Resource, f64>; N_PLAYERS] {
+        let n_states = self.states.values().sum::<u32>() as f64;
+        let mut expected = <[EnumMap<Resource, f64>; N_PLAYERS]>::default();
         for (state, count) in self.states.iter() {
             for (player, cards) in state.iter().enumerate() {
                 for (card, num) in cards.iter() {
-                    expected[player][card] += *num as f32 * *count as f32 / n_states;
+                    expected[player][card] += *num as f64 * *count as f64 / n_states;
                 }
             }
         }
@@ -387,7 +387,7 @@ impl Tracker {
 
         let expected = self.expected();
         let sure = self.sure();
-        let mut totals = EnumMap::<Resource, f32>::default();
+        let mut totals = EnumMap::<Resource, f64>::default();
 
         for (id, player) in self.in_order() {
             for (card, num) in expected[id].into_iter() {
@@ -400,29 +400,29 @@ impl Tracker {
                 format!(
                     "{:>2} ({:1.2})",
                     sure[id][Resource::Lumber],
-                    expected[id][Resource::Lumber] - sure[id][Resource::Lumber] as f32
+                    expected[id][Resource::Lumber] - sure[id][Resource::Lumber] as f64
                 ),
                 format!(
                     "{:>2} ({:1.2})",
                     sure[id][Resource::Brick],
-                    expected[id][Resource::Brick] - sure[id][Resource::Brick] as f32
+                    expected[id][Resource::Brick] - sure[id][Resource::Brick] as f64
                 ),
                 format!(
                     "{:>2} ({:1.2})",
                     sure[id][Resource::Wool],
-                    expected[id][Resource::Wool] - sure[id][Resource::Wool] as f32
+                    expected[id][Resource::Wool] - sure[id][Resource::Wool] as f64
                 ),
                 format!(
                     "{:>2} ({:1.2})",
                     sure[id][Resource::Grain],
-                    expected[id][Resource::Grain] - sure[id][Resource::Grain] as f32
+                    expected[id][Resource::Grain] - sure[id][Resource::Grain] as f64
                 ),
                 format!(
                     "{:>2} ({:1.2})",
                     sure[id][Resource::Ore],
-                    expected[id][Resource::Ore] - sure[id][Resource::Ore] as f32
+                    expected[id][Resource::Ore] - sure[id][Resource::Ore] as f64
                 ),
-                format!("{:>2.0}", expected[id].values().sum::<f32>())
+                format!("{:>2.0}", expected[id].values().sum::<f64>())
             ));
         }
 
@@ -434,7 +434,7 @@ impl Tracker {
             format!("{:>2.0}", totals[Resource::Wool]),
             format!("{:>2.0}", totals[Resource::Grain]),
             format!("{:>2.0}", totals[Resource::Ore]),
-            format!("{:>2.0}", totals.values().sum::<f32>())
+            format!("{:>2.0}", totals.values().sum::<f64>())
         ));
 
         result
