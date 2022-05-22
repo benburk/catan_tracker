@@ -13,13 +13,6 @@ const CARDS: &str = r"((?:(?:lumber|brick|wool|grain|ore|card) ?)+)";
 const ITEM_PTTN: &str = r"(road|settlement|city|development card)";
 const USERNAME: &str = "Mera#4025";
 
-/// Table format string with 7 columns
-macro_rules! format_str {
-    () => {
-        "{:<10} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10}\n"
-    };
-}
-
 fn normalize_text(text: &str) -> String {
     let text = Regex::new(r"\s+")
         .unwrap()
