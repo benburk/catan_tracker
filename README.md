@@ -1,17 +1,12 @@
 
+# Catan tracker
 
-TODO:
-- [x] use enum_map
-- [x] implement reset
-- [x] use vec instead of hashmap?
-- [x] fix incorrect rob logic in computing probabilities
-- [x] fix monopoly
-- [x] implement rob chances table
-- [x] deprecate name remapping and in_order
-- [x] take in player names as argument
-    - [ ] update reset logic
-- [x] add colors
-    - [x] rob chances
-- [ ] remove uncertainty in table for USERNAME
-- [ ] dice tracker
-- [ ] dev card tracker
+Keep track of all possible hand states on colonist.io. Uses chrome devtools protocol to read the html directly off the page.
+
+## Running
+
+Run chrome in debug mode
+
+```shell
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir=~/data
+```
