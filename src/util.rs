@@ -80,9 +80,7 @@ pub fn parse_html(html: &str) -> Vec<String> {
 
     for message in document.select(&msg_selector) {
         let mut text = message.inner_html();
-        println!("AHH {}", text);
         for img in message.select(&img_selector) {
-            println!("{}\n{}", img.inner_html(), img.value().attr("alt").unwrap());
             let alt_text = format!("{} ", img.value().attr("alt").unwrap());
             text = text.replace(&img.html(), &alt_text);
         }

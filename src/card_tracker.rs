@@ -6,7 +6,7 @@ use std::collections::HashMap;
 const NAME: &str = r"(\w+(?:#\d+)?)";
 const CARDS: &str = r"((?:(?:lumber|brick|wool|grain|ore|card) ?)+)";
 const ITEM_PTTN: &str = r"(road|settlement|city|development card)";
-const USERNAME: &str = "Lookaside";
+const USERNAME: &str = "Salli#5164";
 
 
 /// Builds all the regex patterns we can encounter in our log
